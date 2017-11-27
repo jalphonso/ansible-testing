@@ -1,0 +1,70 @@
+---
+
+- hosts: all
+  connection: local
+  gather_facts: no
+  roles:
+  - role: Juniper.junos
+  tasks:
+  - name: static pw
+    set_fact:
+      username: ansible
+      password: testing123
+
+  - name: Test scp with expect
+    expect:
+      command: scp testfile {{ username }}@{{ inventory_hostname }}:/var/db/scripts/event/
+      responses:
+        "Password":
+          - "{{ password }}"
+
+  - name: Get TimeDateStamp
+    set_fact:
+      mydate: "{{lookup('pipe','date +%Y%m%d%H%M%S')}}"
+      username: "ansible"
+      password: "testing123"
+  - name: Set Facts
+    set_fact:
+      diffs_file: "{{ inventory_hostname }}-{{ mydate }}-config.diff"
+      single_re_script: "single.slax"
+      dual_re_script: "dual.slax"
+      junos_conf: "junos.set"
+  - name: Junos get facts
+    junos_get_facts:
+      host: "{{ inventory_hostname }}"
+      user: "{{ username }}"
+      passwd: "{{password|default()}}"
+    register: facts
+
+  - name: Print RE0 fact to screen
+    debug:
+      var: facts.facts.RE0
+
+  - name: Print RE1 fact to screen
+    debug:
+      var: facts.facts.RE1
+
+  - name: Select appropriate SLAX script
+    set_fact:
+      script: "{% if facts.facts.RE0 and facts.facts.RE1%}'{{ dual_re_script }}'{% else%}'{{ single_re_script }}'{% endif %}"
+
+  - name: Print facts to screen
+    debug:
+      var: script
+      
+  - name: pushing config
+    junos_install_config:
+      file: "{{ junos_conf }}"
+      diffs_file: "{{ diffs_file }}"
+      host: "{{ inventory_hostname }}"
+      check_commit: false
+      replace: yes
+      user: "{{ username }}"
+      passwd: "{{password|default()}}"
+      timeout: 60
+    register: junos_install_config_result
+
+  - name: cat diffs_file
+    debug:
+      msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
+    when: junos_install_config_result|changed
