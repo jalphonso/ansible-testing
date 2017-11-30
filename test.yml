@@ -52,7 +52,7 @@
     debug:
       var: script
       
-  - name: pushing config
+  - name: pushing config (Dry Run with show|compare)
     junos_install_config:
       file: "{{ junos_conf }}"
       diffs_file: "{{ diffs_file }}"
@@ -64,7 +64,6 @@
       timeout: 60
     register: junos_install_config_result
 
-  - name: cat diffs_file
-    debug:
-      msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
+  - name: proceed with config changes if needed
+    import_tasks: commit_confirmed_tasks.yml
     when: junos_install_config_result|changed

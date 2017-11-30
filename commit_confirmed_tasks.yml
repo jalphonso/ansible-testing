@@ -1,0 +1,43 @@
+---
+
+- name: cat diffs_file
+  debug:
+    msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
+
+- name: Pausing for user to review configuration changes for all hosts
+  pause:
+    prompt: "Please review configuration changes"
+    minutes: 10
+
+- name: pushing config (Commit Confirmed)
+  junos_install_config:
+    file: "{{ junos_conf }}"
+    diffs_file: "{{ diffs_file }}"
+    host: "{{ inventory_hostname }}"
+    confirm: 10
+    replace: yes
+    user: "{{ username }}"
+    passwd: "{{password|default()}}"
+    timeout: 60
+  register: junos_install_config_result
+
+- name: cat diffs_file
+  debug:
+    msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
+  when: junos_install_config_result|changed
+
+- name: Wait 10 seconds for port 22 to become open and contain "OpenSSH"
+  wait_for:
+    port: 22
+    host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+    search_regex: OpenSSH
+    delay: 10
+    timeout: 30
+  connection: local
+
+- name: Issuing secondary commit to finalize configuration
+  junos_commit:
+    host: "{{ inventory_hostname }}"
+    user: "{{ username }}"
+    passwd: "{{password|default()}}"
+    timeout: 60
