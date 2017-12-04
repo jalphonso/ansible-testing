@@ -9,22 +9,32 @@
     prompt: "Please review configuration changes"
     minutes: 10
 
+- name: Get TimeDateStamp
+  set_fact: mydate="{{lookup('pipe','date +%Y%m%d%H%M%S')}}"
+
+- name: Set Diff file variable
+  set_fact:
+      committed_diffs_file: "{{ inventory_hostname }}-{{ mydate }}-config.diff"
+
 - name: pushing config (Commit Confirmed)
   junos_install_config:
     file: "{{ junos_conf }}"
-    diffs_file: "{{ diffs_file }}"
+    diffs_file: "{{ committed_diffs_file }}"
     host: "{{ inventory_hostname }}"
     confirm: 10
     replace: yes
     user: "{{ username }}"
     passwd: "{{password|default()}}"
+    port: 22
     timeout: 60
   register: junos_install_config_result
 
-- name: cat diffs_file
-  debug:
-    msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
-  when: junos_install_config_result|changed
+
+- name: checking diffs from pre and post commit
+  command: diff -I SECRET-DATA {{ diffs_file }} {{ committed_diffs_file }}
+  failed_when: "diff.rc > 0"
+  changed_when: False
+  register: diff
 
 - name: Wait 10 seconds for port 22 to become open and contain "OpenSSH"
   wait_for:
@@ -40,4 +50,5 @@
     host: "{{ inventory_hostname }}"
     user: "{{ username }}"
     passwd: "{{password|default()}}"
+    port: 22
     timeout: 60
