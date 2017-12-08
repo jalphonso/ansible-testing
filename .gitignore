@@ -2,3 +2,5 @@ hosts
 *.diff
 *.retry
 *.swp
+*.slax
+*.set
