@@ -16,20 +16,27 @@
       mydate: "{{lookup('pipe','date +%Y%m%d%H%M%S')}}"
   - name: Set Facts
     set_fact:
-      diffs_file: "{{ inventory_hostname }}-{{ mydate }}-config.diff"
       single_re_script: "single.slax"
       dual_re_script: "dual.slax"
       junos_conf: "./event.set"
-  - name: Junos get facts
-    junos_get_facts:
-      host: "{{ inventory_hostname }}"
+      build_path_pre: "build/{{ inventory_hostname }}/{{ mydate}}"
+
+  - name: Create subdirectory for storing configs and diffs
+    file:
+      path: "{{ build_path_pre }}"
+      state: directory
+      mode: 0770
+
+  - name: Junos NEW Get Facts
+    juniper_junos_facts:
+      host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
       user: "{{ username }}"
       passwd: "{{password|default()}}"
     register: facts
 
   - name: Select appropriate SLAX script
     set_fact:
-      script: "{% if facts.facts.RE0 and facts.facts.RE1%}{{ dual_re_script }}{% else%}{{ single_re_script }}{% endif %}"
+      script: "{% if facts.ansible_facts.junos['has_2RE']%}{{ dual_re_script }}{% else%}{{ single_re_script }}{% endif %}"
 
   - name: Test scp with expect
     expect:
@@ -46,17 +53,20 @@
       dest: "{{ junos_conf }}"
 
   - name: pushing config (Dry Run with show|compare)
-    junos_install_config:
-      file: "{{ junos_conf }}"
-      diffs_file: "{{ diffs_file }}"
-      host: "{{ inventory_hostname }}"
-      check_commit: false
-      replace: yes
+    juniper_junos_config:
+      host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
       user: "{{ username }}"
-      passwd: "{{password|default()}}"
+      passwd: "{{ password|default() }}"
+      load: set
+      src: "{{ junos_conf }}"
+      dest_dir: "{{ build_path_pre }}"
+      diff: true
+      check: true
+      commit: false
+      port: 22
       timeout: 60
-    register: junos_install_config_result
+    register: juniper_junos_config_result
 
   - name: proceed with config changes if needed
     import_tasks: commit_confirmed_tasks.yml
-    when: junos_install_config_result|changed
+    when: juniper_junos_config_result|changed

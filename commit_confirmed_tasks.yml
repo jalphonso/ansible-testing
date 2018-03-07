@@ -2,36 +2,45 @@
 
 - name: cat diffs_file
   debug:
-    msg: "{{lookup('file','{{ diffs_file }}').split('\n')}}"
+    var: juniper_junos_config_result.diff_lines
 
 - name: Pausing for user to review configuration changes for all hosts
   pause:
     prompt: "Please review configuration changes"
-    minutes: 10
+    minutes: 2
 
 - name: Get TimeDateStamp
-  set_fact: mydate="{{lookup('pipe','date +%Y%m%d%H%M%S')}}"
+  set_fact:
+    mydate: "{{lookup('pipe','date +%Y%m%d%H%M%S')}}"
 
 - name: Set Diff file variable
   set_fact:
-      committed_diffs_file: "{{ inventory_hostname }}-{{ mydate }}-config.diff"
+    build_path_post: "build/{{ inventory_hostname }}/{{ mydate}}"
+
+- name: Create subdirectory for storing configs and diffs
+  file:
+    path: "{{ build_path_post }}"
+    state: directory
+    mode: 0770
 
 - name: pushing config (Commit Confirmed)
-  junos_install_config:
-    file: "{{ junos_conf }}"
-    diffs_file: "{{ committed_diffs_file }}"
-    host: "{{ inventory_hostname }}"
-    confirm: 10
-    replace: yes
+  juniper_junos_config:
+    host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
     user: "{{ username }}"
-    passwd: "{{password|default()}}"
+    passwd: "{{ password|default() }}"
+    load: set
+    src: "{{ junos_conf }}"
+    dest_dir: "{{ build_path_post }}"
+    diff: true
+    check: false
+    commit: true
+    confirmed: 10
     port: 22
     timeout: 60
-  register: junos_install_config_result
-
+  register: juniper_junos_config_result
 
 - name: checking diffs from pre and post commit
-  command: diff -I SECRET-DATA {{ diffs_file }} {{ committed_diffs_file }}
+  command: diff -I SECRET-DATA {{ build_path_pre }}/{{ ansible_ssh_host }}.diff {{ build_path_post }}/{{ ansible_ssh_host }}.diff
   failed_when: "diff.rc > 0"
   changed_when: False
   register: diff
@@ -45,10 +54,13 @@
     timeout: 30
   connection: local
 
-- name: Issuing secondary commit to finalize configuration
-  junos_commit:
-    host: "{{ inventory_hostname }}"
+- name: Issuing secondary commit to finalize changes
+  juniper_junos_config:
+    host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
     user: "{{ username }}"
     passwd: "{{password|default()}}"
+    diff: false
+    check: false
+    commit: true
     port: 22
     timeout: 60
